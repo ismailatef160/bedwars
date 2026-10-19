@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="bedwars.vcxproj" Id="838cefe0-e9bf-474a-89be-ff7394bdad45" />
+</Solution>
