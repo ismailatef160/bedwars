@@ -1,5 +1,4 @@
 #include<glad/glad.h>
-#include<GLFW/glfw3.h>
 #include<iostream>
 #include<vector>
 #include<cmath>
@@ -7,6 +6,8 @@
 #include<glm/glm.hpp>
 #include<glm/gtc/matrix_transform.hpp>
 #include<glm/gtc/type_ptr.hpp>
+#include "Enemy.h"
+
 
 const int SCREEN_W = 1280;
 const int SCREEN_H = 720;
@@ -367,24 +368,83 @@ void updatePlayers(float dt)
 void drawPlayers()
 {
 }
+std::vector<Enemy> activeEnemies;
+float enemySpawntimer = 0.0f;
+float enemiesSpawnedInWave = 0;
 
 int wave = 1;
 bool enemyAtBase = false;
 bool wavesDone = false;
 
 void resetEnemies() {
-
     wave = 1;
     enemyAtBase = false;
     wavesDone = false;
+    activeEnemies.clear();
+    enemySpawntimer = 0.0f;
+    enemiesSpawnedInWave = 0;
 }
 
 void updateEnemies(float dt)
 {
+    int maxWaveEnemies = (wave == 1) ? 3 : ((wave == 2) ? 5 : 10);
+
+    if (enemiesSpawnedInWave < maxWaveEnemies) {
+        enemySpawntimer += dt;
+        if (enemySpawntimer >= 2.5f) {
+            enemySpawntimer = 0.0f;
+            int spawnLane = std::rand() % NUM_LANES;
+            float spawnY = laneCenterY(spawnLane);
+            float spawnX = 1200.0f;
+
+            EnemyType typeToSpawn = EnemyType::EASY;
+            if (wave == 2) {
+                typeToSpawn = (std::rand() % 2 == 0) ? EnemyType::EASY : EnemyType::MEDIUM;
+            }
+            else if (wave == 3) {
+                int r = std::rand() % 3;
+                typeToSpawn = (r == 0) ? EnemyType::EASY : ((r == 1) ? EnemyType::MEDIUM : EnemyType::HARD);
+            }
+
+            activeEnemies.emplace_back(typeToSpawn, spawnLane, glm::vec2(spawnX, spawnY));
+            enemiesSpawnedInWave++;
+        }
+    }
+
+    for (auto it = activeEnemies.begin(); it != activeEnemies.end();) {
+        it->update(dt);
+        if (it->getPosition().x <= FIELD_X) {
+            enemyAtBase = true;
+            return;
+        }
+
+        if (!it->isAlive()) {
+            coins += it->getReward();
+            it = activeEnemies.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
+
+    if (enemiesSpawnedInWave >= maxWaveEnemies && activeEnemies.empty()) {
+        if (wave < 3) {
+
+            wave++;
+            enemiesSpawnedInWave = 0;
+            enemySpawntimer = 0.0f;
+        }
+        else {
+            wavesDone = true;
+        }
+    }
 }
 
 void drawEnemies()
 {
+    for (const auto& enemy : activeEnemies) {
+        enemy.render();
+    }
 }
 
 bool insideRect(float px, float py, float x, float y, float w, float h)
@@ -433,6 +493,9 @@ void startNewGame()
     coinFlashTime = 0;
     resetPlayers();
     resetEnemies();
+
+    activeEnemies.emplace_back(EnemyType::MEDIUM, 0, glm::vec2(800.0f, laneCenterY(0)));
+
 }
 
 void placePlayers(int type)
