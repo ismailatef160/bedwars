@@ -7,7 +7,7 @@
 #include<glm/gtc/matrix_transform.hpp>
 #include<glm/gtc/type_ptr.hpp>
 #include "Enemy.h"
-
+#include "Player.h"
 
 const int SCREEN_W = 1280;
 const int SCREEN_H = 720;
@@ -310,7 +310,7 @@ const int MELEE = 0;
 const int RANGED = 1;
 const int DEFENSE = 2;
 
-const int START_COINS = 30;
+const int START_COINS = 150;
 int coins = START_COINS;
 
 float mouseX = 0;
@@ -344,29 +344,73 @@ bool cutsceneFinished()
 void drawCutscene()
 {
 }
+std::vector<Player> activePlayers;
+
+struct PlayerArrow {
+    glm::vec2 position;
+    int lane;
+    bool active;
+};
+
+std::vector<PlayerArrow> playerArrows;
 
 void resetPlayers()
 {
+    activePlayers.clear();
+    playerArrows.clear();
 }
-
-void spawnPlayer(int type, int lane)
-{
-}
-
 void jumpPlayers()
 {
+    for (auto& player : activePlayers) {
+        if (laneSelected[player.getLane()]) {
+            player.jump();
+        }
+    }
 }
 
 void duckPlayers()
 {
+    for (auto& player : activePlayers) {
+        if (laneSelected[player.getLane()]) {
+            player.duck();
+        }
+    }
+}
+void spawnPlayer(int type, int lane)
+{
+    if (lane < 0 || lane >= NUM_LANES) {
+        return;
+    }
+
+    if (type < MELEE || type > DEFENSE) {
+        return;
+    }
+
+
+float x = FIELD_X + 35.0f;
+
+float x = FIELD_X + 35.0f;
+    float y = laneCenterY(lane);
+
+    activePlayers.emplace_back(
+        static_cast<PlayerType>(type),
+        lane,
+        glm::vec2(x, y)
+    );
 }
 
 void updatePlayers(float dt)
 {
+    for (auto& player : activePlayers) {
+        player.update(dt);
+    }
 }
 
 void drawPlayers()
 {
+    for (const auto& player : activePlayers) {
+        player.render();
+    }
 }
 std::vector<Enemy> activeEnemies;
 float enemySpawntimer = 0.0f;
@@ -444,6 +488,162 @@ void drawEnemies()
 {
     for (const auto& enemy : activeEnemies) {
         enemy.render();
+    }
+}
+
+
+void checkPlayerEnemyCollisions()
+{
+    for (auto& player : activePlayers) {
+        player.setIsColliding(false);
+    }
+
+    for (auto& enemy : activeEnemies) {
+        enemy.setIsColliding(false);
+    }
+
+    for (auto& player : activePlayers) {
+        if (!player.isAlive()) continue;
+
+        for (auto& enemy : activeEnemies) {
+            if (!enemy.isAlive()) continue;
+
+            if (player.getLane() != enemy.getLane()) continue;
+
+            float distance = std::abs(player.getPosition().x - enemy.getPosition().x);
+
+            if (distance < 28.0f) {
+                player.setIsColliding(true);
+                enemy.setIsColliding(true);
+
+                if (player.getType() == PlayerType::MELEE && player.canAttack()) {
+                    enemy.takeDamage(1);
+                    player.resetAttackTimer();
+                }
+            }
+        }
+    }
+}
+
+
+
+void checkEnemyProjectileHits()
+{
+    for (auto& enemy : activeEnemies) {
+        for (auto& projectile : enemy.getProjectiles()) {
+
+            if (!projectile.Active) continue;
+
+            Player* target = nullptr;
+
+            for (auto& player : activePlayers) {
+
+                if (!player.isAlive()) continue;
+                if (player.getLane() != enemy.getLane()) continue;
+
+                float distanceX = std::abs(
+                    player.getPosition().x - projectile.position.x
+                );
+
+                float distanceY = std::abs(
+                    player.getPosition().y - projectile.position.y
+                );
+
+                if (distanceX < 20.0f && distanceY < 38.0f) {
+
+                    if (target == nullptr ||
+                        player.getPosition().x > target->getPosition().x) {
+                        target = &player;
+                    }
+                }
+            }
+
+            if (target == nullptr) continue;
+
+            if (projectile.isHighAtatck && target->isDucking()) {
+                continue;
+            }
+
+            if (!projectile.isHighAtatck && target->isJumping()) {
+                continue;
+            }
+
+            target->takeDamage(1);
+            projectile.Active = false;
+        }
+    }
+}
+
+void updateRangedAttacks(float dt)
+{
+    for (auto& player : activePlayers) {
+
+        if (!player.isAlive()) continue;
+        if (player.getType() != PlayerType::RANGED) continue;
+        if (!player.canAttack()) continue;
+
+        for (auto& enemy : activeEnemies) {
+
+            if (!enemy.isAlive()) continue;
+            if (player.getLane() != enemy.getLane()) continue;
+
+            float distance = enemy.getPosition().x - player.getPosition().x;
+
+            if (distance > 0.0f && distance < 350.0f) {
+
+                PlayerArrow arrow;
+                arrow.position = player.getPosition();
+                arrow.position.x += 22.0f;
+                arrow.lane = player.getLane();
+                arrow.active = true;
+
+                playerArrows.push_back(arrow);
+                player.resetAttackTimer();
+                break;
+            }
+        }
+    }
+
+    for (auto& arrow : playerArrows) {
+
+        if (!arrow.active) continue;
+
+        arrow.position.x += 320.0f * dt;
+
+        if (arrow.position.x > FIELD_X + FIELD_W) {
+            arrow.active = false;
+            continue;
+        }
+
+        for (auto& enemy : activeEnemies) {
+
+            if (!enemy.isAlive()) continue;
+            if (arrow.lane != enemy.getLane()) continue;
+
+            float distance = std::abs(
+                arrow.position.x - enemy.getPosition().x
+            );
+
+            if (distance < 18.0f) {
+                enemy.takeDamage(1);
+                arrow.active = false;
+                break;
+            }
+        }
+    }
+}
+
+void drawPlayerArrows()
+{
+    for (const auto& arrow : playerArrows) {
+
+        if (!arrow.active) continue;
+
+        float x = arrow.position.x;
+        float y = arrow.position.y;
+
+        drawRect(x - 8, y - 2, 16, 4, 150, 95, 45);
+        drawRect(x + 8, y - 4, 5, 8, 200, 200, 200);
     }
 }
 
@@ -838,8 +1038,11 @@ void updateGame(float dt)
         }
     }
     else if (gameState == STATE_PLAYING) {
-        updatePlayers(dt);
-        updateEnemies(dt);
+       updatePlayers(dt);
+       updateEnemies(dt);
+       checkPlayerEnemyCollisions();
+       checkEnemyProjectileHits();
+       updateRangedAttacks(dt);
         if (enemyAtBase) {
             gameState = STATE_LOST;
         }
@@ -867,6 +1070,7 @@ void drawGame()
         drawEnvironment();
         drawLaneHighlights();
         drawPlayers();
+        drawPlayerArrows();
         drawEnemies();
         drawHUD();
 
