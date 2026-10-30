@@ -8,20 +8,24 @@ class Person {
 protected:
 	int lane;
 	int maxHealth;
-	int currentHealth = 0;
-	float speed = 0.0f;
-	float attackCooldown = 0.0f;
-	float attackTimer = 0.0f;
-	bool isColliding = false;
+	int currentHealth;
+	float speed;
+	float attackCooldown;
+	float attackTimer;
+	bool isColliding;
 	vec2 position;
-	
+
 public:
 	Person(int lane, int maxHealth, float speed, float attackCooldown, vec2 position) {
 		this->lane = lane;
 		this->maxHealth = maxHealth;
+		this->currentHealth = maxHealth;
 		this->speed = speed;
 		this->attackCooldown = attackCooldown;
 		this->position = position;
+		this->attackTimer = 0.0f;
+		this->isColliding = false;
+
 	}
 
 	//virtual destructor

@@ -1,6 +1,7 @@
 #include "Enemy.h"
 #include <glad/glad.h>
-#include <GLFW/glfw3.h>
+
+
 
 void drawRect(float x, float y, float w, float h, int r, int g, int b);
 void drawRotatedRect(float cx, float cy, float w, float h, float angle, int r, int g, int b);
@@ -15,7 +16,7 @@ Enemy::Enemy(EnemyType enemyType, int lane, glm::vec2 startPsoition)
 		(enemyType == EnemyType::HARD) ? 1.0f : 2.0f,
 		startPsoition),
 	enemyType(enemyType),
-	enemyState(EnemyState::MOVING){
+	enemyState(EnemyState::MOVING) {
 
 	if (enemyType == EnemyType::EASY) {
 		collectibleReward = 10;
@@ -41,7 +42,7 @@ void Enemy::update(float deltaTime) {
 		return;
 	}
 
-	if(!isColliding){
+	if (!isColliding) {
 		enemyState = EnemyState::MOVING;
 		position.x -= speed * deltaTime; // here we are reducing the x coordinates because the enemies move to the right to left
 	}
@@ -66,9 +67,9 @@ void Enemy::update(float deltaTime) {
 
 	for (auto& proj : activeProjectiles) {
 		if (proj.Active) {
-			proj.position.x -= speed * deltaTime;
+			proj.position.x -= proj.speed * deltaTime;
 
-			if (proj.position.x < -1.0f) {
+			if (proj.position.x < 130.0f) {
 				proj.Active = false;
 			}
 		}
@@ -83,10 +84,15 @@ static void applyDamageColor(int baseR, int baseG, int baseB, float rTint, int& 
 
 void Enemy::drawPhantom(float cx, float cy, float rTint) const {
 	int r, g, b;
+	int t = glfwGetTime() * 12.0f;
+	float bob = (enemyState == EnemyState::MOVING) ? sin(t) * 4.0f : 0.0f;
+	float flapAngle = (enemyState == EnemyState::MOVING) ? -sin(t) * 35.0f : 0.0f;
+
+	cy += bob;
 	// Wings
 	applyDamageColor(40, 50, 95, rTint, r, g, b);
-	drawRotatedRect(cx - 24, cy - 8, 30, 10, -20.0f, r, g, b);
-	drawRotatedRect(cx + 24, cy - 8, 30, 10, 20.0f, r, g, b);
+	drawRotatedRect(cx - 24, cy - 8, 30, 10, -20.0f - flapAngle, r, g, b);
+	drawRotatedRect(cx + 24, cy - 8, 30, 10, 20.0f + flapAngle, r, g, b);
 	// Main Body
 	applyDamageColor(60, 75, 130, rTint, r, g, b);
 	drawRect(cx - 15, cy - 12, 30, 24, r, g, b);
@@ -100,20 +106,25 @@ void Enemy::drawPhantom(float cx, float cy, float rTint) const {
 
 void Enemy::drawCreeper(float cx, float cy, float rTint) const {
 	int r, g, b;
-	// Head
+	float t = glfwGetTime() * 8.0f; // Animation speed
+	float bob = (enemyState == EnemyState::MOVING) ? sin(t) * 2.0f : 0.0f;
+	float stride = (enemyState == EnemyState::MOVING) ? sin(t) * 2.0f : 0.0f;
+
+	cy += bob; // Apply vertical bounce to the upper body
+
 	applyDamageColor(40, 180, 45, rTint, r, g, b);
 	drawRect(cx - 16, cy - 36, 32, 28, r, g, b);
-	// Face details
-	drawRect(cx - 10, cy - 30, 6, 6, 20, 20, 20); // Eye L
-	drawRect(cx + 4, cy - 30, 6, 6, 20, 20, 20); // Eye R
-	drawRect(cx - 4, cy - 22, 8, 12, 20, 20, 20); // Mouth
-	// Torso
+	drawRect(cx - 10, cy - 30, 6, 6, 20, 20, 20);
+	drawRect(cx + 4, cy - 30, 6, 6, 20, 20, 20);
+	drawRect(cx - 4, cy - 22, 8, 12, 20, 20, 20);
+
 	applyDamageColor(35, 150, 40, rTint, r, g, b);
 	drawRect(cx - 12, cy - 8, 24, 30, r, g, b);
-	// Feet
+
+	// Legs offset in opposite directions for a walking cycle
 	applyDamageColor(25, 100, 30, rTint, r, g, b);
-	drawRect(cx - 16, cy + 22, 12, 14, r, g, b);
-	drawRect(cx + 4, cy + 22, 12, 14, r, g, b);
+	drawRect(cx - 16 + stride, cy + 22 - bob, 12, 14, r, g, b);
+	drawRect(cx + 4 - stride, cy + 22 - bob, 12, 14, r, g, b);
 }
 
 
@@ -139,28 +150,23 @@ void Enemy::drawArmoredRusher(float cx, float cy, float rTint) const {
 
 void Enemy::attack() {
 	if (enemyType == EnemyType::EASY) {
+		// High attack (above the lane -> smaller Y in top-left coordinate system)
 		activeProjectiles.push_back({
-			60.0f,
-			true,
-			true,
-			glm::vec2(position.x - 10.f, position.y + 20.0f)
+			260.0f, // Much faster than the enemy's 45.0f speed!
+			true,   // isHighAttack = true (Player must duck)
+			true  ,
+			glm::vec2(position.x - 25.0f, position.y - 22.0f),// active
 			});
 	}
-
 	else if (enemyType == EnemyType::MEDIUM) {
+		// Low attack (below the lane -> larger Y in top-left coordinate system)
 		activeProjectiles.push_back({
-			60.0f,
-			false,
-			true,
-			glm::vec2(position.x - 10.f, position.y - 20.0f)
-			});
-	}
 
-	else if (enemyType == EnemyType::HARD) {
-		// Melee attacker deals 2 points of damage at close range.
-		// Actual damage subtraction is usually handled by the Game/Collision Manager, 
-		// but we trigger the sword-swing animation state here.
-		std::cout << "Hard Enemy swings sword for 2 damage!" << std::endl;
+			260.0f, // Much faster than the enemy's 45.0f speed!
+			false,  // isHighAttack = false (Player must jump)
+			true  ,
+			glm::vec2(position.x - 25.0f, position.y + 22.0f),// active
+			});
 	}
 }
 

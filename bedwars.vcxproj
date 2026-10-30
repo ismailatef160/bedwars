@@ -157,13 +157,13 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\BedWars\BedWars\Enemy.cpp" />
     <ClCompile Include="..\BedWars\BedWars\glad.c" />
+    <ClCompile Include="Enemy.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\BedWars\BedWars\Enemy.h" />
-    <ClInclude Include="..\BedWars\BedWars\Person.h" />
+    <ClInclude Include="Enemy.h" />
+    <ClInclude Include="Person.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -1,4 +1,5 @@
 #pragma once
+#include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <algorithm>
@@ -24,7 +25,7 @@ struct Projectile {
 	glm::vec2 position;
 };
 
-class Enemy: public Person {
+class Enemy : public Person {
 protected:
 	EnemyType enemyType;
 	EnemyState enemyState;
@@ -44,8 +45,7 @@ public:
 	void update(float deltaTime) override;
 	void render() const override;
 
- 	void attack();
-	void DropCollictible() const;
+	void attack();
 
 	std::vector<Projectile>& getProjectiles() { return activeProjectiles; }
 	EnemyType getType() const { return enemyType; }
