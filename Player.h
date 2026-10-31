@@ -14,12 +14,20 @@ private:
     bool jumping = false;
     bool ducking = false;
     float actionTimer = 0.0f;
-
+    float swingTimer = 0.0f;
+    float bowTimer = 0.0f;
 public:
     Player(PlayerType type, int lane, glm::vec2 startPosition);
 
     void update(float deltaTime) override;
     void render() const override;
+    void startSwing() {
+    swingTimer = 0.5f;
+
+}
+void startBowShot() {
+    bowTimer = 0.3f;
+}
 
     PlayerType getType() const { return playerType; }
 

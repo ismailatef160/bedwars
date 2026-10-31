@@ -310,7 +310,7 @@ const int MELEE = 0;
 const int RANGED = 1;
 const int DEFENSE = 2;
 
-const int START_COINS = 150;
+const int START_COINS = 30;
 int coins = START_COINS;
 
 float mouseX = 0;
@@ -376,33 +376,69 @@ void duckPlayers()
         }
     }
 }
-void spawnPlayer(int type, int lane)
+
+
+bool spawnPlayer(int type, int lane)
 {
     if (lane < 0 || lane >= NUM_LANES) {
-        return;
+        return false;
     }
 
     if (type < MELEE || type > DEFENSE) {
-        return;
+        return false;
     }
 
-
-float x = FIELD_X + 35.0f;
-
-float x = FIELD_X + 35.0f;
+    float x = FIELD_X + 35.0f;
     float y = laneCenterY(lane);
+
+    if (type == DEFENSE) {
+
+        x = FIELD_X + 325.0f;
+
+        for (const auto& player : activePlayers) {
+
+            if (!player.isAlive()) continue;
+            if (player.getLane() != lane) continue;
+            if (player.getType() != PlayerType::DEFENSE) continue;
+
+            float nextX = player.getPosition().x - 70.0f;
+
+            if (nextX < x) {
+                x = nextX;
+            }
+        }
+
+        if (x < FIELD_X + 95.0f) {
+            return false;
+        }
+    }
 
     activePlayers.emplace_back(
         static_cast<PlayerType>(type),
         lane,
         glm::vec2(x, y)
     );
+
+    return true;
 }
 
 void updatePlayers(float dt)
 {
     for (auto& player : activePlayers) {
         player.update(dt);
+    }
+}
+
+void removeDefeatedPlayers()
+{
+    for (auto it = activePlayers.begin(); it != activePlayers.end();) {
+
+        if (!it->isAlive()) {
+            it = activePlayers.erase(it);
+        }
+        else {
+            ++it;
+        }
     }
 }
 
@@ -413,6 +449,7 @@ void drawPlayers()
     }
 }
 std::vector<Enemy> activeEnemies;
+std::vector<float> hardEnemyAttackTimers;
 float enemySpawntimer = 0.0f;
 float enemiesSpawnedInWave = 0;
 
@@ -425,6 +462,7 @@ void resetEnemies() {
     enemyAtBase = false;
     wavesDone = false;
     activeEnemies.clear();
+    hardEnemyAttackTimers.clear();
     enemySpawntimer = 0.0f;
     enemiesSpawnedInWave = 0;
 }
@@ -451,6 +489,7 @@ void updateEnemies(float dt)
             }
 
             activeEnemies.emplace_back(typeToSpawn, spawnLane, glm::vec2(spawnX, spawnY));
+            hardEnemyAttackTimers.push_back(0.0f);
             enemiesSpawnedInWave++;
         }
     }
@@ -462,10 +501,18 @@ void updateEnemies(float dt)
             return;
         }
 
-        if (!it->isAlive()) {
-            coins += it->getReward();
-            it = activeEnemies.erase(it);
-        }
+
+if (!it->isAlive()) {
+    int index = static_cast<int>(it - activeEnemies.begin());
+
+    coins += it->getReward();
+
+    hardEnemyAttackTimers.erase(
+        hardEnemyAttackTimers.begin() + index
+    );
+
+    it = activeEnemies.erase(it);
+}
         else {
             ++it;
         }
@@ -516,15 +563,60 @@ void checkPlayerEnemyCollisions()
                 player.setIsColliding(true);
                 enemy.setIsColliding(true);
 
-                if (player.getType() == PlayerType::MELEE && player.canAttack()) {
-                    enemy.takeDamage(1);
-                    player.resetAttackTimer();
-                }
-            }
+           if (player.getType() == PlayerType::MELEE && player.canAttack()) {
+          enemy.takeDamage(1);
+          player.startSwing();
+         player.resetAttackTimer();
+          }   
+                 }
         }
     }
 }
 
+
+void checkHardEnemyAttacks(float dt)
+{
+    for (int i = 0; i < static_cast<int>(activeEnemies.size()); i++) {
+
+        Enemy& enemy = activeEnemies[i];
+
+        if (!enemy.isAlive()) continue;
+        if (enemy.getType() != EnemyType::HARD) continue;
+
+        Player* target = nullptr;
+
+        for (auto& player : activePlayers) {
+
+            if (!player.isAlive()) continue;
+            if (player.getLane() != enemy.getLane()) continue;
+
+            float distance = std::abs(
+                player.getPosition().x - enemy.getPosition().x
+            );
+
+            if (distance < 28.0f) {
+
+                if (target == nullptr ||
+                    player.getPosition().x > target->getPosition().x) {
+                    target = &player;
+                }
+            }
+        }
+
+        if (target != nullptr) {
+
+            hardEnemyAttackTimers[i] += dt;
+
+            if (hardEnemyAttackTimers[i] >= enemy.getAttackCooldown()) {
+                target->takeDamage(2);
+                hardEnemyAttackTimers[i] = 0.0f;
+            }
+        }
+        else {
+            hardEnemyAttackTimers[i] = 0.0f;
+        }
+    }
+}
 
 
 void checkEnemyProjectileHits()
@@ -596,11 +688,10 @@ void updateRangedAttacks(float dt)
                 arrow.position.x += 22.0f;
                 arrow.lane = player.getLane();
                 arrow.active = true;
-
                 playerArrows.push_back(arrow);
+                player.startBowShot();
                 player.resetAttackTimer();
-                break;
-            }
+                break;            }
         }
     }
 
@@ -629,6 +720,19 @@ void updateRangedAttacks(float dt)
                 arrow.active = false;
                 break;
             }
+        }
+    }
+}
+
+void removeInactivePlayerArrows()
+{
+    for (auto it = playerArrows.begin(); it != playerArrows.end();) {
+
+        if (!it->active) {
+            it = playerArrows.erase(it);
+        }
+        else {
+            ++it;
         }
     }
 }
@@ -683,21 +787,29 @@ int cardUnderMouse()
     return result;
 }
 
+
 void startNewGame()
 {
     coins = START_COINS;
-    for (int i = 0;i < NUM_LANES;i++) {
+
+    for (int i = 0; i < NUM_LANES; i++) {
         laneSelected[i] = false;
     }
+
     laneFlashTime = 0;
     coinFlashTime = 0;
+
     resetPlayers();
     resetEnemies();
 
-    activeEnemies.emplace_back(EnemyType::MEDIUM, 0, glm::vec2(800.0f, laneCenterY(0)));
+activeEnemies.emplace_back(
+    EnemyType::MEDIUM,
+    0,
+    glm::vec2(500.0f, laneCenterY(0))
+);
 
+hardEnemyAttackTimers.push_back(0.0f);
 }
-
 void placePlayers(int type)
 {
     bool anyLane = false;
@@ -716,11 +828,14 @@ void placePlayers(int type)
 
     int placed = 0;
     for (int lane = 0;lane < NUM_LANES;lane++) {
-        if (laneSelected[lane] && coins >= cardPrice[type]) {
-            coins -= cardPrice[type];
-            spawnPlayer(type, lane);
-            placed++;
-        }
+
+if (laneSelected[lane] && coins >= cardPrice[type]) {
+
+    if (spawnPlayer(type, lane)) {
+        coins -= cardPrice[type];
+        placed++;
+    }
+}
     }
     if (placed == 0) {
         coinFlashTime = 0.5f;
@@ -1041,7 +1156,10 @@ void updateGame(float dt)
        updatePlayers(dt);
        updateEnemies(dt);
        checkPlayerEnemyCollisions();
+       checkHardEnemyAttacks(dt);
        checkEnemyProjectileHits();
+       removeDefeatedPlayers();
+       removeInactivePlayerArrows();
        updateRangedAttacks(dt);
         if (enemyAtBase) {
             gameState = STATE_LOST;
