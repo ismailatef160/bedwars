@@ -456,7 +456,7 @@ float enemiesSpawnedInWave = 0;
 int wave = 1;
 bool enemyAtBase = false;
 bool wavesDone = false;
-
+float waveBreakTimer = 0.0f;
 void resetEnemies() {
     wave = 1;
     enemyAtBase = false;
@@ -465,11 +465,12 @@ void resetEnemies() {
     hardEnemyAttackTimers.clear();
     enemySpawntimer = 0.0f;
     enemiesSpawnedInWave = 0;
+    waveBreakTimer = 0.0f;
 }
 
 void updateEnemies(float dt)
 {
-    int maxWaveEnemies = (wave == 1) ? 3 : ((wave == 2) ? 5 : 10);
+    int maxWaveEnemies = (wave == 1) ? 1 : ((wave == 2) ? 2 : 3);
 
     if (enemiesSpawnedInWave < maxWaveEnemies) {
         enemySpawntimer += dt;
@@ -480,12 +481,22 @@ void updateEnemies(float dt)
             float spawnX = 1200.0f;
 
             EnemyType typeToSpawn = EnemyType::EASY;
+            if (wave == 1) {
+                typeToSpawn = EnemyType::EASY;
+            }
             if (wave == 2) {
-                typeToSpawn = (std::rand() % 2 == 0) ? EnemyType::EASY : EnemyType::MEDIUM;
+                if (enemiesSpawnedInWave == 0) typeToSpawn = EnemyType::EASY;
+                else if (enemiesSpawnedInWave == 1) typeToSpawn = EnemyType::MEDIUM;
+                else typeToSpawn = (std::rand() % 2 == 0 ? EnemyType::EASY : EnemyType::MEDIUM);
             }
             else if (wave == 3) {
-                int r = std::rand() % 3;
-                typeToSpawn = (r == 0) ? EnemyType::EASY : ((r == 1) ? EnemyType::MEDIUM : EnemyType::HARD);
+                if (enemiesSpawnedInWave == 0) typeToSpawn = EnemyType::EASY;
+                else if (enemiesSpawnedInWave == 1) typeToSpawn = EnemyType::MEDIUM;
+                else if (enemiesSpawnedInWave == 2) typeToSpawn = EnemyType::HARD;
+                else {
+                    int r = std::rand() % 3;
+                    typeToSpawn = (r == 0) ? EnemyType::EASY : ((r == 1) ? EnemyType::MEDIUM : EnemyType::HARD);
+                }
             }
 
             activeEnemies.emplace_back(typeToSpawn, spawnLane, glm::vec2(spawnX, spawnY));
@@ -520,10 +531,12 @@ if (!it->isAlive()) {
 
     if (enemiesSpawnedInWave >= maxWaveEnemies && activeEnemies.empty()) {
         if (wave < 3) {
-
-            wave++;
-            enemiesSpawnedInWave = 0;
-            enemySpawntimer = 0.0f;
+            waveBreakTimer += dt;
+            if (waveBreakTimer >= 3.0f) {
+                wave++;
+                enemiesSpawnedInWave = 0;
+                enemySpawntimer = 0.0f;
+            }
         }
         else {
             wavesDone = true;
@@ -801,14 +814,6 @@ void startNewGame()
 
     resetPlayers();
     resetEnemies();
-
-activeEnemies.emplace_back(
-    EnemyType::MEDIUM,
-    0,
-    glm::vec2(500.0f, laneCenterY(0))
-);
-
-hardEnemyAttackTimers.push_back(0.0f);
 }
 void placePlayers(int type)
 {
