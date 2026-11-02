@@ -57,7 +57,7 @@ int circleVertexCount = 0;
 int triangleStart = 0;
 
 const char* vertexShaderSource = R"(
-#version 430 core
+#version 330 core
 
 layout (location = 0) in vec3 aPos;
 
@@ -70,7 +70,7 @@ void main()
 )";
 
 const char* fragmentShaderSource = R"(
-#version 430 core
+#version 330 core
 
 uniform float u_Red;
 uniform float u_Green;
@@ -323,27 +323,497 @@ int cardUnlockAt[3] = { 10,60,90 };
 
 float laneFlashTime = 0;
 float coinFlashTime = 0;
+void drawBed(float cx, float cy);
+
+// --- Pixel font rendering ---
+unsigned short getGlyphMask(char c)
+{
+    if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
+    switch (c) {
+        case 'A': return 0x7bed;
+        case 'B': return 0x6bae;
+        case 'C': return 0x7927;
+        case 'D': return 0x6b6e;
+        case 'E': return 0x79a7;
+        case 'F': return 0x79a4;
+        case 'G': return 0x796f;
+        case 'H': return 0x5bed;
+        case 'I': return 0x7497;
+        case 'J': return 0x126a;
+        case 'K': return 0x5bad;
+        case 'L': return 0x4927;
+        case 'M': return 0x5f6d;
+        case 'N': return 0x6b6d;
+        case 'O': return 0x7b6f;
+        case 'P': return 0x7be4;
+        case 'Q': return 0x7b79;
+        case 'R': return 0x7bf5;
+        case 'S': return 0x79cf;
+        case 'T': return 0x7492;
+        case 'U': return 0x5b6f;
+        case 'V': return 0x5b6a;
+        case 'W': return 0x5b7d;
+        case 'X': return 0x5aad;
+        case 'Y': return 0x5a92;
+        case 'Z': return 0x72a7;
+        case '!': return 0x2482;
+        case '.': return 0x0002;
+        case ':': return 0x0410;
+        case '-': return 0x01c0;
+        case '?': return 0x6282;
+        case '\'': return 0x2400;
+        case ',': return 0x0014;
+        case '0': return 0x7b6f;
+        case '1': return 0x2c97;
+        case '2': return 0x73e7;
+        case '3': return 0x73cf;
+        case '4': return 0x5bc9;
+        case '5': return 0x79cf;
+        case '6': return 0x79ef;
+        case '7': return 0x7252;
+        case '8': return 0x7bef;
+        case '9': return 0x7bcf;
+        default: return 0x0000;
+    }
+}
+
+void drawLetter(char c, float x, float y, float s, int r, int g, int b)
+{
+    unsigned short mask = getGlyphMask(c);
+    if (!mask) return;
+    for (int row = 0; row < 5; row++) {
+        for (int col = 0; col < 3; col++) {
+            int bit = (4 - row) * 3 + (2 - col);
+            if (mask & (1 << bit)) {
+                drawRect(x + col * s, y + row * s, s, s, r, g, b);
+            }
+        }
+    }
+}
+
+void drawString(const char* text, float x, float y, float s, int r, int g, int b)
+{
+    if (!text) return;
+    float curX = x;
+    for (int i = 0; text[i] != '\0'; i++) {
+        char c = text[i];
+        if (c == ' ') {
+            curX += 4.0f * s;
+            continue;
+        }
+        drawLetter(c, curX + 1.0f, y + 1.0f, s, 0, 0, 0);
+        drawLetter(c, curX, y, s, r, g, b);
+        curX += 4.0f * s;
+    }
+}
+
+// --- Environment state & models ---
+struct Cloud {
+    float x;
+    float y;
+    float speed;
+    float scale;
+};
+
+Cloud envClouds[5] = {
+    { 80.0f, 20.0f, 12.0f, 1.0f },
+    { 340.0f, 45.0f, 16.0f, 0.85f },
+    { 620.0f, 15.0f, 10.0f, 1.25f },
+    { 910.0f, 50.0f, 14.0f, 0.9f },
+    { 1180.0f, 30.0f, 11.0f, 1.1f }
+};
+
+float envTorchTime = 0.0f;
+
+void updateEnvironment(float dt)
+{
+    envTorchTime += dt;
+    for (int i = 0; i < 5; i++) {
+        envClouds[i].x += envClouds[i].speed * dt;
+        if (envClouds[i].x > SCREEN_W + 120.0f) {
+            envClouds[i].x = -160.0f;
+        }
+    }
+}
+
+void drawCloud(float x, float y, float scale)
+{
+    float w = 90.0f * scale;
+    float h = 26.0f * scale;
+    drawRect(x + 12 * scale, y, w - 24 * scale, h, 255, 255, 255);
+    drawRect(x, y + 8 * scale, w, h - 8 * scale, 255, 255, 255);
+    drawRect(x + 20 * scale, y - 8 * scale, w - 44 * scale, 8 * scale, 255, 255, 255);
+    drawRect(x + 4 * scale, y + h - 4 * scale, w - 8 * scale, 4 * scale, 215, 225, 235);
+}
+
+void drawOakTree(float x, float y)
+{
+    drawRect(x - 10, y, 20, 52, 105, 75, 40);
+    drawRect(x - 10, y + 10, 20, 4, 85, 60, 30);
+    drawRect(x - 10, y + 28, 20, 4, 85, 60, 30);
+
+    drawRect(x - 38, y - 36, 76, 36, 45, 115, 35);
+    drawRect(x - 30, y - 56, 60, 24, 55, 135, 45);
+    drawRect(x - 18, y - 70, 36, 16, 70, 160, 55);
+
+    drawRect(x - 24, y - 32, 14, 10, 75, 165, 55);
+    drawRect(x + 10, y - 48, 12, 10, 75, 165, 55);
+}
+
+void drawTorch(float x, float y, float time)
+{
+    drawRect(x - 3, y - 10, 6, 26, 120, 85, 45);
+    drawRect(x - 4, y - 14, 8, 4, 50, 45, 45);
+
+    float flicker = sinf(time * 18.0f) * 2.0f;
+    float flameH = 14.0f + flicker;
+    drawRect(x - 5, y - 14 - flameH, 10, flameH, 255, 150, 20);
+    drawRect(x - 3, y - 12 - flameH * 0.7f, 6, flameH * 0.7f, 255, 230, 80);
+    drawRect(x - 1, y - 10 - flameH * 0.4f, 2, flameH * 0.4f, 255, 255, 200);
+}
+
+void drawFlower(float x, float y, bool isYellow)
+{
+    drawRect(x - 1, y - 12, 2, 14, 60, 130, 40);
+    drawRect(x - 3, y - 6, 2, 3, 60, 130, 40);
+    if (isYellow) {
+        drawRect(x - 4, y - 16, 8, 5, 245, 215, 35);
+        drawRect(x - 2, y - 18, 4, 2, 255, 235, 80);
+        drawRect(x - 1, y - 15, 2, 2, 200, 150, 20);
+    } else {
+        drawRect(x - 4, y - 16, 8, 5, 220, 40, 40);
+        drawRect(x - 2, y - 18, 4, 2, 240, 70, 70);
+        drawRect(x - 1, y - 15, 2, 2, 35, 20, 20);
+    }
+}
+
+void drawChest(float x, float y)
+{
+    drawRect(x - 14, y - 12, 28, 24, 160, 110, 50);
+    drawRectOutline(x - 14, y - 12, 28, 24, 2, 55, 40, 20);
+    drawRect(x - 14, y - 2, 28, 2, 55, 40, 20);
+    drawRect(x - 3, y - 4, 6, 7, 220, 220, 225);
+    drawRect(x - 1, y - 2, 2, 3, 40, 40, 40);
+}
+
+void drawCraftingTable(float x, float y)
+{
+    drawRect(x - 14, y - 14, 28, 28, 150, 100, 50);
+    drawRectOutline(x - 14, y - 14, 28, 28, 2, 80, 50, 25);
+    drawRect(x - 12, y - 12, 24, 6, 180, 130, 70);
+    drawRect(x - 8, y + 2, 6, 8, 80, 50, 25);
+    drawRect(x + 2, y + 2, 6, 8, 80, 50, 25);
+}
+
+void drawHomeBaseBed(float cx, float cy)
+{
+    drawRect(cx - 36, cy + 10, 8, 14, 90, 60, 30);
+    drawRect(cx + 28, cy + 10, 8, 14, 90, 60, 30);
+    drawRect(cx - 38, cy + 2, 76, 10, 150, 110, 60);
+    drawRect(cx - 38, cy - 14, 76, 17, 205, 40, 40);
+    drawRect(cx - 38, cy - 2, 76, 3, 155, 25, 25);
+    drawRect(cx - 38, cy - 18, 22, 18, 245, 245, 245);
+    drawRectOutline(cx - 38, cy - 18, 22, 18, 1, 200, 200, 200);
+}
 
 void drawEnvironment()
 {
+    // Sky gradient layers
+    drawRect(0, 0, SCREEN_W, 130, 115, 180, 240);
+    drawRect(0, 70, SCREEN_W, 60, 140, 200, 250);
+
+    // Clouds
+    for (int i = 0; i < 5; i++) {
+        drawCloud(envClouds[i].x, envClouds[i].y + 60.0f, envClouds[i].scale);
+    }
+
+    // Horizon trees
+    drawOakTree(220, 130);
+    drawOakTree(520, 130);
+    drawOakTree(820, 130);
+    drawOakTree(1120, 130);
+
+    // 4 Battle lanes
+    for (int lane = 0; lane < NUM_LANES; lane++) {
+        float y = laneTop(lane);
+        int r = (lane % 2 == 0) ? 100 : 90;
+        int g = (lane % 2 == 0) ? 175 : 160;
+        int b = (lane % 2 == 0) ? 65 : 55;
+        drawRect(FIELD_X, y, FIELD_W, LANE_H, r, g, b);
+
+        drawRect(FIELD_X, y, FIELD_W, 3, 80, 145, 45);
+        for (int col = 0; col < 20; col++) {
+            float px = FIELD_X + col * 58.0f + ((lane * 17) % 30);
+            drawRect(px, y + 4, 4, 3, 75, 135, 40);
+        }
+
+        if (lane < NUM_LANES - 1) {
+            float sepY = y + LANE_H - 4;
+            drawRect(FIELD_X, sepY, FIELD_W, 4, 120, 80, 45);
+            for (int k = 0; k < 12; k++) {
+                drawRect(FIELD_X + k * 95.0f + 20, sepY, 12, 4, 100, 100, 105);
+            }
+        }
+    }
+
+    // Flowers on lanes
+    drawFlower(260, laneCenterY(0) + 25, false);
+    drawFlower(640, laneCenterY(0) - 20, true);
+    drawFlower(980, laneCenterY(0) + 15, false);
+
+    drawFlower(410, laneCenterY(1) + 20, true);
+    drawFlower(780, laneCenterY(1) - 22, false);
+    drawFlower(1100, laneCenterY(1) + 18, true);
+
+    drawFlower(320, laneCenterY(2) - 18, false);
+    drawFlower(580, laneCenterY(2) + 22, true);
+    drawFlower(890, laneCenterY(2) - 15, false);
+
+    drawFlower(490, laneCenterY(3) + 20, true);
+    drawFlower(750, laneCenterY(3) - 20, false);
+    drawFlower(1040, laneCenterY(3) + 15, true);
+
+    // Torches along lanes
+    for (int lane = 0; lane < NUM_LANES; lane++) {
+        float ly = laneCenterY(lane);
+        drawTorch(450, ly - 32, envTorchTime + lane);
+        drawTorch(850, ly - 32, envTorchTime + lane * 1.5f);
+        drawTorch(1180, ly - 32, envTorchTime + lane * 2.2f);
+    }
+
+    // Fortress wall on safe zone
+    drawRect(0, FIELD_Y, HOME_W, SCREEN_H - FIELD_Y, 100, 100, 105);
+    for (int r = 0; r < 14; r++) {
+        float by = FIELD_Y + r * 42.0f;
+        drawRect(0, by, HOME_W, 2, 60, 60, 65);
+        int offset = (r % 2) * 32;
+        for (int c = 0; c < 3; c++) {
+            float bx = c * 64 - offset;
+            if (bx >= 0 && bx < HOME_W) {
+                drawRect(bx, by, 2, 42, 60, 60, 65);
+            }
+        }
+    }
+    drawRect(HOME_W - 4, FIELD_Y, 4, SCREEN_H - FIELD_Y, 65, 65, 70);
+
+    // Castle props
+    drawTorch(25, FIELD_Y + 45, envTorchTime);
+    drawTorch(105, FIELD_Y + 45, envTorchTime + 0.8f);
+    drawChest(32, laneCenterY(0) + 10);
+    drawCraftingTable(95, laneCenterY(1) - 10);
+    drawChest(32, laneCenterY(2) + 20);
+
+    // Bed objective at Home Base
+    drawHomeBaseBed(65, laneCenterY(1) + 40);
+
+    // Bottom dirt cliff
+    float botY = laneTop(NUM_LANES - 1) + LANE_H;
+    drawRect(0, botY, SCREEN_W, SCREEN_H - botY, 125, 80, 45);
+    drawRect(0, botY, SCREEN_W, 5, 85, 55, 30);
+    for (int col = 0; col < 22; col++) {
+        float px = col * 60.0f;
+        drawRect(px + 10, botY + 12, 14, 10, 100, 65, 35);
+        drawRect(px + 35, botY + 28, 12, 8, 90, 60, 30);
+    }
 }
+
+// --- Cutscene implementation ---
+float cutsceneTimer = 0.0f;
+const float CUTSCENE_DURATION = 15.0f;
+bool cutsceneDone = false;
 
 void startCutscene()
 {
+    cutsceneTimer = 0.0f;
+    cutsceneDone = false;
 }
 
 void updateCutscene(float dt)
 {
+    cutsceneTimer += dt;
+    if (cutsceneTimer >= CUTSCENE_DURATION) {
+        cutsceneDone = true;
+    }
 }
 
 bool cutsceneFinished()
 {
-    return true;
+    return cutsceneDone;
+}
+
+void skipCutscene()
+{
+    cutsceneDone = true;
+}
+
+void drawDialogueBox(const char* speaker, const char* line1, const char* line2, int badgeR, int badgeG, int badgeB)
+{
+    float bx = 80.0f;
+    float by = 555.0f;
+    float bw = 1120.0f;
+    float bh = 135.0f;
+
+    drawRect(bx - 3, by - 3, bw + 6, bh + 6, 20, 20, 25);
+    drawRect(bx, by, bw, bh, 35, 35, 42);
+    drawRectOutline(bx, by, bw, bh, 3, badgeR, badgeG, badgeB);
+
+    drawRect(bx + 16, by - 16, 130, 24, badgeR, badgeG, badgeB);
+    drawRectOutline(bx + 16, by - 16, 130, 24, 2, 20, 20, 25);
+    drawString(speaker, bx + 28, by - 12, 2.5f, 255, 255, 255);
+
+    drawString(line1, bx + 28, by + 28, 3.0f, 245, 245, 250);
+    drawString(line2, bx + 28, by + 74, 3.0f, 245, 245, 250);
+
+    drawString("PRESS SPACE TO SKIP", SCREEN_W - 270, 30, 2.0f, 255, 255, 255);
+}
+
+void drawCutsceneSteve(float x, float y, float legSwing, float armAngle, bool swordRaised)
+{
+    drawRect(x - 14, y - 38, 28, 28, 210, 165, 125);
+    drawRect(x - 14, y - 38, 28, 8, 75, 45, 25);
+    drawRect(x - 14, y - 30, 7, 10, 75, 45, 25);
+    drawRect(x + 7, y - 30, 7, 10, 75, 45, 25);
+
+    drawRect(x - 6, y - 24, 4, 3, 50, 70, 190);
+    drawRect(x + 2, y - 24, 4, 3, 50, 70, 190);
+    drawRect(x - 2, y - 19, 4, 3, 175, 125, 95);
+
+    drawRect(x - 13, y - 10, 26, 30, 40, 185, 205);
+
+    drawRect(x - 12, y + 20 + legSwing, 10, 20, 45, 55, 130);
+    drawRect(x + 2, y + 20 - legSwing, 10, 20, 45, 55, 130);
+
+    drawRect(x - 19, y - 10, 6, 26, 40, 185, 205);
+    drawRect(x - 19, y + 16, 6, 8, 210, 165, 125);
+
+    if (swordRaised) {
+        drawRect(x + 13, y - 26, 6, 22, 40, 185, 205);
+        drawRect(x + 13, y - 32, 6, 6, 210, 165, 125);
+        drawRotatedRect(x + 16, y - 56, 8, 38, -15.0f, 90, 225, 235);
+        drawRotatedRect(x + 16, y - 42, 18, 6, -15.0f, 110, 70, 35);
+    } else {
+        drawRect(x + 13, y - 10, 6, 26, 40, 185, 205);
+        drawRect(x + 13, y + 16, 6, 8, 210, 165, 125);
+        drawRotatedRect(x + 22, y + 6, 6, 30, 30.0f, 90, 225, 235);
+        drawRotatedRect(x + 22, y + 16, 16, 5, 30.0f, 110, 70, 35);
+    }
+}
+
+void drawCutsceneCreeper(float x, float y, float stride, bool flashWhite)
+{
+    int r = flashWhite ? 245 : 45;
+    int g = flashWhite ? 245 : 185;
+    int b = flashWhite ? 245 : 45;
+
+    drawRect(x - 18, y - 40, 36, 32, r, g, b);
+
+    int eyeR = flashWhite ? 180 : 20;
+    drawRect(x - 12, y - 32, 7, 7, eyeR, eyeR, eyeR);
+    drawRect(x + 5, y - 32, 7, 7, eyeR, eyeR, eyeR);
+    drawRect(x - 4, y - 23, 8, 12, eyeR, eyeR, eyeR);
+    drawRect(x - 8, y - 17, 4, 9, eyeR, eyeR, eyeR);
+    drawRect(x + 4, y - 17, 4, 9, eyeR, eyeR, eyeR);
+
+    drawRect(x - 13, y - 8, 26, 32, r - 10, g - 25, b - 10);
+
+    drawRect(x - 16 + stride, y + 24, 13, 16, r - 20, g - 50, b - 20);
+    drawRect(x + 3 - stride, y + 24, 13, 16, r - 20, g - 50, b - 20);
+}
+
+void drawCutscenePhantom(float x, float y, float flapAngle)
+{
+    drawRotatedRect(x - 30, y - 8, 38, 12, -20.0f - flapAngle, 50, 60, 110);
+    drawRotatedRect(x + 30, y - 8, 38, 12, 20.0f + flapAngle, 50, 60, 110);
+    drawRect(x - 18, y - 12, 36, 24, 65, 80, 140);
+    drawRect(x - 28, y - 8, 14, 16, 40, 45, 80);
+    drawRect(x - 25, y - 5, 5, 5, 185, 255, 60);
+    drawRect(x + 18, y - 4, 20, 8, 40, 45, 80);
 }
 
 void drawCutscene()
 {
+    float t = cutsceneTimer;
+
+    int skyR = 110, skyG = 175, skyB = 235;
+    if (t >= 5.0f && t < 10.0f) {
+        float f = (t - 5.0f) / 5.0f;
+        skyR = 110 + (int)(f * 15);
+        skyG = 175 - (int)(f * 95);
+        skyB = 235 - (int)(f * 95);
+    } else if (t >= 10.0f) {
+        float f = (t - 10.0f) / 5.0f;
+        skyR = 125 + (int)(f * 40);
+        skyG = 80 - (int)(f * 20);
+        skyB = 140 - (int)(f * 70);
+    }
+    drawRect(0, 0, SCREEN_W, 460, skyR, skyG, skyB);
+
+    drawCloud(180, 60, 1.2f);
+    drawCloud(780, 80, 1.0f);
+
+    drawRect(0, 460, SCREEN_W, 260, 95, 170, 60);
+    drawRect(0, 460, SCREEN_W, 6, 75, 140, 45);
+    drawRect(0, 490, SCREEN_W, 230, 125, 85, 55);
+    drawRect(0, 490, SCREEN_W, 6, 85, 55, 35);
+
+    drawOakTree(60, 460);
+    drawOakTree(1220, 460);
+
+    drawBed(140, 430);
+    drawRect(95, 360, 90, 22, 20, 20, 25);
+    drawRectOutline(95, 360, 90, 22, 2, 255, 215, 60);
+    drawString("OUR BED", 108, 364, 2.0f, 255, 215, 60);
+
+    if (t < 5.0f) {
+        float walkProgress = sinf(t * 2.5f);
+        float steveX = 350.0f + walkProgress * 70.0f;
+        float legSwing = sinf(t * 8.0f) * 4.0f;
+        drawCutsceneSteve(steveX, 420.0f, legSwing, 0.0f, false);
+
+        drawDialogueBox("STEVE",
+                        "ANOTHER PEACEFUL DAY GUARDING OUR BEDWARS ISLAND.",
+                        "AS LONG AS THIS BED IS SAFE, OUR RESPAWNS ARE SECURE!",
+                        40, 185, 205);
+    }
+    else if (t < 10.0f) {
+        float steveX = 410.0f;
+        drawCutsceneSteve(steveX, 420.0f, 0.0f, 0.0f, false);
+
+        float progress = (t - 5.0f) / 5.0f;
+        float creeperX = 1250.0f - progress * 400.0f;
+        float stride = sinf(t * 10.0f) * 4.0f;
+        drawCutsceneCreeper(creeperX, 420.0f, stride, false);
+
+        float phantomX = 1250.0f - progress * 450.0f;
+        float phantomY = 120.0f + sinf(t * 5.0f) * 20.0f;
+        float flap = sinf(t * 14.0f) * 35.0f;
+        drawCutscenePhantom(phantomX, phantomY, flap);
+
+        drawDialogueBox("CREEPER",
+                        "SSSSS... NOT FOR LONG, STEVE!",
+                        "DESTROY THAT BED AND THEY WILL NEVER RESPAWN!",
+                        220, 50, 45);
+    }
+    else {
+        float steveX = 410.0f;
+        drawCutsceneSteve(steveX, 420.0f, 0.0f, 0.0f, true);
+
+        float creeperX = 850.0f + sinf(t * 20.0f) * 2.0f;
+        bool flash = ((int)(t * 8.0f) % 2 == 0);
+        drawCutsceneCreeper(creeperX, 420.0f, 0.0f, flash);
+
+        float phantomX = 800.0f;
+        float phantomY = 130.0f + sinf(t * 4.0f) * 15.0f;
+        float flap = sinf(t * 12.0f) * 30.0f;
+        drawCutscenePhantom(phantomX, phantomY, flap);
+
+        drawDialogueBox("STEVE",
+                        "NOT ON MY WATCH! DEFENDERS, TO YOUR LANES!",
+                        "HOLD THE LINE AND PROTECT THE BED AT ALL COSTS!",
+                        255, 205, 50);
+    }
 }
+
 std::vector<Player> activePlayers;
 
 struct PlayerArrow {
@@ -1144,6 +1614,8 @@ void drawLaneHighlights()
 
 void updateGame(float dt)
 {
+    updateEnvironment(dt);
+
     if (laneFlashTime > 0) {
         laneFlashTime -= dt;
     }
@@ -1236,6 +1708,14 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
         return;
     }
 
+    if (gameState == STATE_CUTSCENE) {
+        if (key == GLFW_KEY_SPACE) {
+            skipCutscene();
+            gameState = STATE_PLAYING;
+        }
+        return;
+    }
+
     if (gameState != STATE_PLAYING) {
         return;
     }
@@ -1316,9 +1796,12 @@ int main()
         return -1;
     }
 
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+#ifdef __APPLE__
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+#endif
 
     GLFWwindow* window = glfwCreateWindow(SCREEN_W, SCREEN_H, "Minecraft Bedwars 2D", nullptr, nullptr);
     if (!window) {
