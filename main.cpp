@@ -790,7 +790,7 @@ void drawCutscene()
         drawCutscenePhantom(phantomX, phantomY, flap);
 
         drawDialogueBox("CREEPER",
-                        "SSSSS... NOT FOR LONG, STEVE!",
+                        "SHHHH... NOT FOR LONG, STEVE!",
                         "DESTROY THAT BED AND THEY WILL NEVER RESPAWN!",
                         220, 50, 45);
     }
