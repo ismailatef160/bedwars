@@ -319,7 +319,7 @@ bool laneSelected[4];
 int hoveredLane = -1;
 
 int cardPrice[3] = { 10,20,30 };
-int cardUnlockAt[3] = { 10,60,90 };
+int cardUnlockAt[3] = { 10,20,30 };
 
 float laneFlashTime = 0;
 float coinFlashTime = 0;
@@ -823,7 +823,51 @@ struct PlayerArrow {
 };
 
 std::vector<PlayerArrow> playerArrows;
+enum class CollectibleType {
+    COIN,
+    HEAL
+};
+struct Collectible {
+    glm::vec2 position;
+    int lane;
+    CollectibleType type;
+    int value;
+    bool active;
+    float bobTimer;
+};
 
+std::vector<Collectible> activeCollectibles;
+
+
+void drawCoinItem(float cx, float cy) {
+    drawRect(cx - 7, cy - 5, 14, 10, 245, 205, 40);
+    drawRect(cx - 5, cy - 3, 10, 6, 255, 235, 100);
+    drawRectOutline(cx - 7, cy - 5, 14, 10, 1, 160, 110, 20);
+}
+
+void drawHealItem(float cx, float cy) {
+    // Red Heart / Golden Apple
+    drawRect(cx - 8, cy - 6, 7, 7, 230, 40, 40);
+    drawRect(cx + 1, cy - 6, 7, 7, 230, 40, 40);
+    drawTriangle(cx, cy + 3, 16, 12, 180.0f, 230, 40, 40);
+    // Shine highlight
+    drawRect(cx - 5, cy - 4, 3, 3, 255, 200, 200);
+}
+
+void drawCollectibles() {
+    for (const auto& item : activeCollectibles) {
+        if (!item.active) continue;
+
+        float bobY = item.position.y + sinf(item.bobTimer * 5.0f) * 3.0f;
+
+        if (item.type == CollectibleType::COIN) {
+            drawCoinItem(item.position.x, bobY);
+        }
+        else {
+            drawHealItem(item.position.x, bobY);
+        }
+    }
+}
 void resetPlayers()
 {
     activePlayers.clear();
@@ -936,17 +980,47 @@ void resetEnemies() {
     enemySpawntimer = 0.0f;
     enemiesSpawnedInWave = 0;
     waveBreakTimer = 0.0f;
+    activeCollectibles.clear();
 }
+int getBalancedSpawnLane()
+{
+    // Count how many enemies currently occupy each lane
+    int laneCounts[NUM_LANES] = { 0, 0, 0, 0 };
+    for (const auto& enemy : activeEnemies) {
+        if (enemy.isAlive() && enemy.getLane() >= 0 && enemy.getLane() < NUM_LANES) {
+            laneCounts[enemy.getLane()]++;
+        }
+    }
 
+    // Find the minimum number of enemies in any lane
+    int minCount = laneCounts[0];
+    for (int i = 1; i < NUM_LANES; i++) {
+        if (laneCounts[i] < minCount) {
+            minCount = laneCounts[i];
+        }
+    }
+
+    // Gather all candidate lanes that share this lowest count
+    std::vector<int> candidateLanes;
+    for (int i = 0; i < NUM_LANES; i++) {
+        if (laneCounts[i] == minCount) {
+            candidateLanes.push_back(i);
+        }
+    }
+
+    // Randomly pick among the least crowded lanes
+    int chosenIndex = std::rand() % static_cast<int>(candidateLanes.size());
+    return candidateLanes[chosenIndex];
+}
 void updateEnemies(float dt)
 {
-    int maxWaveEnemies = (wave == 1) ? 1 : ((wave == 2) ? 2 : 3);
+    int maxWaveEnemies = (wave == 1) ? 3 : ((wave == 2) ? 5 : 10);
 
     if (enemiesSpawnedInWave < maxWaveEnemies) {
         enemySpawntimer += dt;
-        if (enemySpawntimer >= 2.5f) {
+        if (enemySpawntimer >= 5.0f) {
             enemySpawntimer = 0.0f;
-            int spawnLane = std::rand() % NUM_LANES;
+            int spawnLane = getBalancedSpawnLane();
             float spawnY = laneCenterY(spawnLane);
             float spawnX = 1200.0f;
 
@@ -983,17 +1057,34 @@ void updateEnemies(float dt)
         }
 
 
-if (!it->isAlive()) {
-    int index = static_cast<int>(it - activeEnemies.begin());
+        if (!it->isAlive()) {
+            int index = static_cast<int>(it - activeEnemies.begin());
 
-    coins += it->getReward();
+            // 1. ALWAYS drop coins from defeated enemies so player never goes broke!
+            activeCollectibles.push_back({
+                it->getPosition(),
+                it->getLane(),
+                CollectibleType::COIN,
+                it->getReward(),
+                true,
+                0.0f
+                });
 
-    hardEnemyAttackTimers.erase(
-        hardEnemyAttackTimers.begin() + index
-    );
+            // 2. Extra 30% chance to ALSO drop a separate Heart pickup
+            if ((std::rand() % 10) < 3) {
+                activeCollectibles.push_back({
+                    glm::vec2(it->getPosition().x - 25.0f, it->getPosition().y),
+                    it->getLane(),
+                    CollectibleType::HEAL,
+                    2,
+                    true,
+                    0.0f
+                    });
+            }
 
-    it = activeEnemies.erase(it);
-}
+            hardEnemyAttackTimers.erase(hardEnemyAttackTimers.begin() + index);
+            it = activeEnemies.erase(it);
+        }
         else {
             ++it;
         }
@@ -1056,7 +1147,46 @@ void checkPlayerEnemyCollisions()
     }
 }
 
+void updateCollectibles(float dt) {
+    for (auto it = activeCollectibles.begin(); it != activeCollectibles.end();) {
+        if (!it->active) {
+            it = activeCollectibles.erase(it);
+            continue;
+        }
 
+        it->bobTimer += dt;
+
+        bool collected = false;
+
+        // Check 1: Did an active player in this lane touch it?
+        for (auto& player : activePlayers) {
+            if (!player.isActive() || !player.isAlive()) continue;
+            if (player.getLane() != it->lane) continue;
+
+            // Generous collision box (45.0f) so it picks up smoothly as units pass
+            float distX = std::abs(player.getPosition().x - it->position.x);
+            float distY = std::abs(player.getPosition().y - it->position.y);
+
+            if (distX < 45.0f && distY < 40.0f) {
+                if (it->type == CollectibleType::COIN) {
+                    coins += it->value;
+                }
+                else if (it->type == CollectibleType::HEAL) {
+                    player.takeHeal(it->value);
+                }
+                collected = true;
+                break;
+            }
+        }
+
+        if (collected) {
+            it = activeCollectibles.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
+}
 void checkHardEnemyAttacks(float dt)
 {
     for (int i = 0; i < static_cast<int>(activeEnemies.size()); i++) {
@@ -1284,6 +1414,7 @@ void startNewGame()
 
     resetPlayers();
     resetEnemies();
+    activeCollectibles.clear();
 }
 void placePlayers(int type)
 {
@@ -1632,6 +1763,7 @@ void updateGame(float dt)
     else if (gameState == STATE_PLAYING) {
        updatePlayers(dt);
        updateEnemies(dt);
+       updateCollectibles(dt);
        checkPlayerEnemyCollisions();
        checkHardEnemyAttacks(dt);
        checkEnemyProjectileHits();
@@ -1664,6 +1796,7 @@ void drawGame()
     else {
         drawEnvironment();
         drawLaneHighlights();
+        drawCollectibles();
         drawPlayers();
         drawPlayerArrows();
         drawEnemies();
@@ -1847,6 +1980,11 @@ int main()
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
+
+    activeEnemies.clear();
+    activePlayers.clear();
+    playerArrows.clear();
+    hardEnemyAttackTimers.clear();
 
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
