@@ -22,17 +22,19 @@ public:
     void update(float deltaTime) override;
     void render() const override;
     void startSwing() {
+    if (!active || !isAlive()) return;
     swingTimer = 0.5f;
 
 }
 void startBowShot() {
+    if (!active || !isAlive()) return;
     bowTimer = 0.3f;
 }
 
     PlayerType getType() const { return playerType; }
 
     bool canAttack() const {
-        return attackTimer >= attackCooldown;
+        return active && isAlive() && attackTimer >= attackCooldown;
     }
 
     void resetAttackTimer() {

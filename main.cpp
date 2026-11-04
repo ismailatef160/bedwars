@@ -9,7 +9,7 @@
 #include "Enemy.h"
 #include "Player.h"
 
-const int SCREEN_W = 1280;
+extern const int SCREEN_W = 1280;
 const int SCREEN_H = 720;
 
 const int NUM_LANES = 4;
@@ -867,7 +867,7 @@ bool spawnPlayer(int type, int lane)
 
         for (const auto& player : activePlayers) {
 
-            if (!player.isAlive()) continue;
+            if (!player.isActive() || !player.isAlive()) continue;
             if (player.getLane() != lane) continue;
             if (player.getType() != PlayerType::DEFENSE) continue;
 
@@ -903,7 +903,7 @@ void removeDefeatedPlayers()
 {
     for (auto it = activePlayers.begin(); it != activePlayers.end();) {
 
-        if (!it->isAlive()) {
+        if (!it->isActive() || !it->isAlive()) {
             it = activePlayers.erase(it);
         }
         else {
@@ -1033,7 +1033,7 @@ void checkPlayerEnemyCollisions()
     }
 
     for (auto& player : activePlayers) {
-        if (!player.isAlive()) continue;
+        if (!player.isActive() || !player.isAlive()) continue;
 
         for (auto& enemy : activeEnemies) {
             if (!enemy.isAlive()) continue;
@@ -1070,7 +1070,7 @@ void checkHardEnemyAttacks(float dt)
 
         for (auto& player : activePlayers) {
 
-            if (!player.isAlive()) continue;
+            if (!player.isActive() || !player.isAlive()) continue;
             if (player.getLane() != enemy.getLane()) continue;
 
             float distance = std::abs(
@@ -1113,7 +1113,7 @@ void checkEnemyProjectileHits()
 
             for (auto& player : activePlayers) {
 
-                if (!player.isAlive()) continue;
+                if (!player.isActive() || !player.isAlive()) continue;
                 if (player.getLane() != enemy.getLane()) continue;
 
                 float distanceX = std::abs(
@@ -1153,7 +1153,7 @@ void updateRangedAttacks(float dt)
 {
     for (auto& player : activePlayers) {
 
-        if (!player.isAlive()) continue;
+        if (!player.isActive() || !player.isAlive()) continue;
         if (player.getType() != PlayerType::RANGED) continue;
         if (!player.canAttack()) continue;
 

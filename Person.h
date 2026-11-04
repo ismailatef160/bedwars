@@ -13,6 +13,7 @@ protected:
 	float attackCooldown;
 	float attackTimer;
 	bool isColliding;
+	bool active = true;
 	vec2 position;
 
 public:
@@ -36,6 +37,7 @@ public:
 	virtual void render() const = 0;
 
 	void takeDamage(int damageAmount) {
+		if (!active) return;
 		currentHealth = std::max(0, currentHealth - damageAmount);
 	}
 	void takeHeal(int amount) {
@@ -44,6 +46,7 @@ public:
 	bool isAlive() const {
 		return currentHealth > 0;
 	}
+	bool isActive() const { return active; }
 
 	float getHealthRatio() const {
 		return (maxHealth > 0) ? static_cast<float>(currentHealth) / maxHealth : 0.0f;

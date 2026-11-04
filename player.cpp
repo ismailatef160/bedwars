@@ -1,6 +1,8 @@
 
 #include "Player.h"
 
+extern const int SCREEN_W;
+
 void drawRect(float x, float y, float w, float h, int r, int g, int b);
 void drawNumber(int n, float x, float y, float s, int r, int g, int b);
 
@@ -24,7 +26,7 @@ Player::Player(PlayerType type, int lane, glm::vec2 startPosition)
 }
 
 void Player::jump() {
-    if (playerType == PlayerType::DEFENSE || !isAlive()) {
+    if (playerType == PlayerType::DEFENSE || !active || !isAlive()) {
         return;
     }
 
@@ -35,7 +37,7 @@ void Player::jump() {
 
 
 void Player::duck() {
-    if (playerType == PlayerType::DEFENSE || !isAlive()) {
+    if (playerType == PlayerType::DEFENSE || !active || !isAlive()) {
         return;
     }
 
@@ -45,7 +47,7 @@ void Player::duck() {
 }
 
 void Player::update(float deltaTime) {
-    if (!isAlive()) {
+    if (!active || !isAlive()) {
         return;
     }
     if (swingTimer > 0.0f) {
@@ -72,9 +74,16 @@ void Player::update(float deltaTime) {
 }
 
     if (playerType != PlayerType::DEFENSE && !isColliding) {
-        if (position.x < 1240.0f) {
-            position.x += speed * deltaTime;
-        }
+        position.x += speed * deltaTime;
+    }
+
+    // The health-bar outline is the leftmost visual at x - 19.
+    if (position.x - 19.0f >= SCREEN_W) {
+        active = false;
+        isColliding = false;
+        jumping = false;
+        ducking = false;
+        return;
     }
 
     if (playerType == PlayerType::MELEE) {
@@ -92,7 +101,7 @@ void Player::update(float deltaTime) {
 
 
 void Player::render() const {
-    if (!isAlive()) {
+    if (!active || !isAlive()) {
         return;
     }
 
