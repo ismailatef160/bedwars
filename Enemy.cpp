@@ -9,6 +9,7 @@ void drawCircle(float cx, float cy, float radius, int r, int g, int b);
 void drawTriangle(float cx, float cy, float w, float h, float angle, int r, int g, int b);
 void drawNumber(int n, float x, float y, float s, int r, int g, int b);
 
+
 Enemy::Enemy(EnemyType enemyType, int lane, glm::vec2 startPsoition)
 	:Person(lane,
 		(enemyType == EnemyType::HARD) ? 7 : 5,
@@ -28,11 +29,13 @@ Enemy::Enemy(EnemyType enemyType, int lane, glm::vec2 startPsoition)
 		collectibleReward = 50;
 	}
 
-	/*We will need to initialize the VBO and VAO here*/
+	
 }
 
 Enemy::~Enemy() {
-	//delete the VAO,VBO
+	
+	activeProjectiles.clear();
+
 }
 
 void Enemy::update(float deltaTime) {
