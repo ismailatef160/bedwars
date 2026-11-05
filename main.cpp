@@ -310,7 +310,7 @@ const int MELEE = 0;
 const int RANGED = 1;
 const int DEFENSE = 2;
 
-const int START_COINS = 30;
+const int START_COINS = 150;
 int coins = START_COINS;
 
 float mouseX = 0;
@@ -907,6 +907,17 @@ bool spawnPlayer(int type, int lane)
     float y = laneCenterY(lane);
 
     if (type == DEFENSE) {
+        bool hasAttackPlayer = false;
+        for (const auto& player : activePlayers) {
+            if (player.isActive() && player.isAlive() &&
+                player.getType() != PlayerType::DEFENSE) {
+                hasAttackPlayer = true;
+                break;
+            }
+        }
+        if (!hasAttackPlayer) {
+            return false;
+        }
 
         x = FIELD_X + 325.0f;
 
@@ -1423,13 +1434,13 @@ void startNewGame()
 }
 void placePlayers(int type)
 {
-    bool anyLane = false;
+    int selectedLaneCount = 0;
     for (int i = 0;i < NUM_LANES;i++) {
         if (laneSelected[i] == true) {
-            anyLane = true;
+            selectedLaneCount++;
         }
     }
-    if (!anyLane) {
+    if (selectedLaneCount != 1) {
         laneFlashTime = 0.5f;
         return;
     }
