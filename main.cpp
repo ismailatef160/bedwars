@@ -834,6 +834,7 @@ struct Collectible {
     int value;
     bool active;
     float bobTimer;
+    float pickupDelay;
 };
 
 std::vector<Collectible> activeCollectibles;
@@ -1067,7 +1068,8 @@ void updateEnemies(float dt)
                 CollectibleType::COIN,
                 it->getReward(),
                 true,
-                0.0f
+                0.0f,
+                0.6f
                 });
 
             // 2. Extra 30% chance to ALSO drop a separate Heart pickup
@@ -1156,18 +1158,21 @@ void updateCollectibles(float dt) {
 
         it->bobTimer += dt;
 
-        bool collected = false;
+        // Count down pickup delay
+        if (it->pickupDelay > 0.0f) {
+            it->pickupDelay -= dt;
+            ++it;
+            continue; // Cannot be picked up yet! Stays visible on screen.
+        }
 
-        // Check 1: Did an active player in this lane touch it?
+        // Check collision against players in the same lane
+        bool collected = false;
         for (auto& player : activePlayers) {
             if (!player.isActive() || !player.isAlive()) continue;
             if (player.getLane() != it->lane) continue;
 
-            // Generous collision box (45.0f) so it picks up smoothly as units pass
-            float distX = std::abs(player.getPosition().x - it->position.x);
-            float distY = std::abs(player.getPosition().y - it->position.y);
-
-            if (distX < 45.0f && distY < 40.0f) {
+            float dist = std::abs(player.getPosition().x - it->position.x);
+            if (dist < 32.0f) {
                 if (it->type == CollectibleType::COIN) {
                     coins += it->value;
                 }
@@ -1928,7 +1933,7 @@ int main()
     if (!glfwInit()) {
         return -1;
     }
-
+    
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
