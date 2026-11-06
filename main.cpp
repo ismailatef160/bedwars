@@ -8,6 +8,7 @@
 #include<glm/gtc/type_ptr.hpp>
 #include "Enemy.h"
 #include "Player.h"
+#include "SoundManager.h"
 
 extern const int SCREEN_W = 1280;
 const int SCREEN_H = 720;
@@ -304,13 +305,15 @@ const int STATE_PLAYING = 2;
 const int STATE_PAUSED = 3;
 const int STATE_WON = 4;
 const int STATE_LOST = 5;
+const int STATE_AUDIO_SETTINGS = 6;
 int gameState = STATE_MENU;
+int previousState = STATE_MENU;
 
 const int MELEE = 0;
 const int RANGED = 1;
 const int DEFENSE = 2;
 
-const int START_COINS = 150;
+const int START_COINS = 30;
 int coins = START_COINS;
 
 float mouseX = 0;
@@ -373,6 +376,10 @@ unsigned short getGlyphMask(char c)
         case '7': return 0x7252;
         case '8': return 0x7bef;
         case '9': return 0x7bcf;
+        case '+': return 0x05d0;
+        case '%': return 0x52a5;
+        case '[': return 0x6926;
+        case ']': return 0x324b;
         default: return 0x0000;
     }
 }
@@ -960,6 +967,7 @@ void removeDefeatedPlayers()
     for (auto it = activePlayers.begin(); it != activePlayers.end();) {
 
         if (!it->isActive() || !it->isAlive()) {
+            SoundManager::getInstance().playSFX(SFX_DEATH);
             it = activePlayers.erase(it);
         }
         else {
@@ -1070,6 +1078,7 @@ void updateEnemies(float dt)
 
 
         if (!it->isAlive()) {
+            SoundManager::getInstance().playSFX(SFX_DEATH);
             int index = static_cast<int>(it - activeEnemies.begin());
 
             // 1. ALWAYS drop coins from defeated enemies so player never goes broke!
@@ -1150,12 +1159,13 @@ void checkPlayerEnemyCollisions()
                 player.setIsColliding(true);
                 enemy.setIsColliding(true);
 
-           if (player.getType() == PlayerType::MELEE && player.canAttack()) {
-          enemy.takeDamage(1);
-          player.startSwing();
-         player.resetAttackTimer();
-          }   
-                 }
+                if (player.getType() == PlayerType::MELEE && player.canAttack()) {
+                    enemy.takeDamage(1);
+                    player.startSwing();
+                    player.resetAttackTimer();
+                    SoundManager::getInstance().playSFX(SFX_HIT);
+                }   
+            }
         }
     }
 }
@@ -1191,6 +1201,7 @@ void updateCollectibles(float dt) {
                     player.takeHeal(it->value);
                 }
                 collected = true;
+                SoundManager::getInstance().playSFX(SFX_COLLECT);
                 break;
             }
         }
@@ -1239,6 +1250,7 @@ void checkHardEnemyAttacks(float dt)
             if (hardEnemyAttackTimers[i] >= enemy.getAttackCooldown()) {
                 target->takeDamage(2);
                 hardEnemyAttackTimers[i] = 0.0f;
+                SoundManager::getInstance().playSFX(SFX_HIT);
             }
         }
         else {
@@ -1291,6 +1303,7 @@ void checkEnemyProjectileHits()
 
             target->takeDamage(1);
             projectile.Active = false;
+            SoundManager::getInstance().playSFX(SFX_HIT);
         }
     }
 }
@@ -1347,6 +1360,7 @@ void updateRangedAttacks(float dt)
             if (distance < 18.0f) {
                 enemy.takeDamage(1);
                 arrow.active = false;
+                SoundManager::getInstance().playSFX(SFX_HIT);
                 break;
             }
         }
@@ -1462,6 +1476,9 @@ if (laneSelected[lane] && coins >= cardPrice[type]) {
     if (placed == 0) {
         coinFlashTime = 0.5f;
     }
+    else {
+        SoundManager::getInstance().playSFX(SFX_PLACE);
+    }
 }
 
 const float BUTTON_X = 490.0f;
@@ -1525,6 +1542,148 @@ void drawButton(int i, int icon)
         drawTriangle(cx, cy - 12, 52, 24, 0.0f, 255, 255, 255);
         drawRect(cx - 18, cy - 1, 36, 22, 255, 255, 255);
         drawRect(cx - 5, cy + 7, 10, 14, r, g, b);
+    }
+}
+
+const float AUDIO_BTN_X = 1130.0f;
+const float AUDIO_BTN_Y = 25.0f;
+const float AUDIO_BTN_W = 125.0f;
+const float AUDIO_BTN_H = 46.0f;
+
+const float AUDIO_PANEL_X = 380.0f;
+const float AUDIO_PANEL_Y = 125.0f;
+const float AUDIO_PANEL_W = 520.0f;
+const float AUDIO_PANEL_H = 460.0f;
+
+const float VOL_DOWN_X = AUDIO_PANEL_X + 45.0f;
+const float VOL_DOWN_Y = AUDIO_PANEL_Y + 225.0f;
+const float VOL_DOWN_W = 205.0f;
+const float VOL_DOWN_H = 48.0f;
+
+const float VOL_UP_X = AUDIO_PANEL_X + 270.0f;
+const float VOL_UP_Y = AUDIO_PANEL_Y + 225.0f;
+const float VOL_UP_W = 205.0f;
+const float VOL_UP_H = 48.0f;
+
+const float MUTE_BTN_X = AUDIO_PANEL_X + 45.0f;
+const float MUTE_BTN_Y = AUDIO_PANEL_Y + 295.0f;
+const float MUTE_BTN_W = 430.0f;
+const float MUTE_BTN_H = 48.0f;
+
+const float BACK_BTN_X = AUDIO_PANEL_X + 110.0f;
+const float BACK_BTN_Y = AUDIO_PANEL_Y + 375.0f;
+const float BACK_BTN_W = 300.0f;
+const float BACK_BTN_H = 52.0f;
+
+void drawThemedButton(float x, float y, float w, float h, const char* label, float textScale, int baseR, int baseG, int baseB, int textR, int textG, int textB)
+{
+    bool hovered = insideRect(mouseX, mouseY, x, y, w, h);
+    int r = hovered ? std::min(255, baseR + 25) : baseR;
+    int g = hovered ? std::min(255, baseG + 25) : baseG;
+    int b = hovered ? std::min(255, baseB + 45) : baseB;
+
+    drawRect(x - 3, y - 3, w + 6, h + 6, 15, 15, 20);
+    drawRect(x, y, w, h, r, g, b);
+    drawRect(x, y, w, 4, std::min(255, r + 60), std::min(255, g + 60), std::min(255, b + 60));
+    drawRect(x, y + h - 5, w, 5, std::max(0, r - 50), std::max(0, g - 50), std::max(0, b - 50));
+
+    int len = 0;
+    while (label && label[len]) len++;
+    float tw = (len * 4.0f - 1.0f) * textScale;
+    float th = 5.0f * textScale;
+    float tx = x + (w - tw) / 2.0f;
+    float ty = y + (h - th) / 2.0f;
+
+    int tr = hovered ? 255 : textR;
+    int tg = hovered ? 255 : textG;
+    int tb = hovered ? (textR > 200 ? 120 : 255) : textB;
+    drawString(label, tx, ty, textScale, tr, tg, tb);
+}
+
+void drawAudioLogoButton()
+{
+    bool hovered = insideRect(mouseX, mouseY, AUDIO_BTN_X, AUDIO_BTN_Y, AUDIO_BTN_W, AUDIO_BTN_H);
+    int r = hovered ? 130 : 115;
+    int g = hovered ? 145 : 115;
+    int b = hovered ? 220 : 115;
+
+    drawRect(AUDIO_BTN_X - 3, AUDIO_BTN_Y - 3, AUDIO_BTN_W + 6, AUDIO_BTN_H + 6, 15, 15, 20);
+    drawRect(AUDIO_BTN_X, AUDIO_BTN_Y, AUDIO_BTN_W, AUDIO_BTN_H, r, g, b);
+    drawRect(AUDIO_BTN_X, AUDIO_BTN_Y, AUDIO_BTN_W, 3, std::min(255, r + 60), std::min(255, g + 60), std::min(255, b + 60));
+    drawRect(AUDIO_BTN_X, AUDIO_BTN_Y + AUDIO_BTN_H - 4, AUDIO_BTN_W, 4, std::max(0, r - 50), std::max(0, g - 50), std::max(0, b - 50));
+
+    float tw = (5.0f * 4.0f - 1.0f) * 2.8f;
+    float tx = AUDIO_BTN_X + (AUDIO_BTN_W - tw) / 2.0f;
+    float ty = AUDIO_BTN_Y + (AUDIO_BTN_H - 14.0f) / 2.0f;
+    drawString("AUDIO", tx, ty, 2.8f, hovered ? 255 : 240, hovered ? 255 : 240, hovered ? 120 : 240);
+}
+
+void drawAudioSettingsMenu()
+{
+    drawRect(AUDIO_PANEL_X, AUDIO_PANEL_Y, AUDIO_PANEL_W, AUDIO_PANEL_H, 25, 25, 30);
+    drawRectOutline(AUDIO_PANEL_X, AUDIO_PANEL_Y, AUDIO_PANEL_W, AUDIO_PANEL_H, 4, 90, 90, 96);
+    drawRectOutline(AUDIO_PANEL_X + 6, AUDIO_PANEL_Y + 6, AUDIO_PANEL_W - 12, AUDIO_PANEL_H - 12, 2, 45, 45, 52);
+
+    drawString("AUDIO SETTINGS", AUDIO_PANEL_X + 130.0f, AUDIO_PANEL_Y + 30.0f, 3.0f, 255, 215, 60);
+    drawRect(AUDIO_PANEL_X + 40.0f, AUDIO_PANEL_Y + 66.0f, AUDIO_PANEL_W - 80.0f, 3, 75, 75, 85);
+
+    drawString("MASTER VOLUME", AUDIO_PANEL_X + 45.0f, AUDIO_PANEL_Y + 95.0f, 2.5f, 220, 220, 230);
+
+    int percent = SoundManager::getInstance().getVolumePercent();
+    bool isMuted = SoundManager::getInstance().isMuted();
+    int filledCount = isMuted ? 0 : (percent + 5) / 10;
+    float barStartX = AUDIO_PANEL_X + 45.0f;
+    float barY = AUDIO_PANEL_Y + 130.0f;
+    float segW = 39.0f;
+    float segH = 26.0f;
+    float segGap = 4.0f;
+
+    for (int i = 0; i < 10; i++) {
+        float bx = barStartX + i * (segW + segGap);
+        if (i < filledCount) {
+            drawRect(bx, barY, segW, segH, 80, 215, 75);
+            drawRect(bx, barY, segW, 3, 140, 255, 130);
+            drawRect(bx, barY + segH - 4, segW, 4, 45, 140, 40);
+        } else {
+            drawRect(bx, barY, segW, segH, 45, 45, 50);
+            drawRectOutline(bx, barY, segW, segH, 2, 30, 30, 35);
+        }
+    }
+
+    if (isMuted) {
+        drawString("MUTED", AUDIO_PANEL_X + 225.0f, AUDIO_PANEL_Y + 175.0f, 2.5f, 240, 70, 70);
+    } else {
+        char pbuf[32];
+        snprintf(pbuf, sizeof(pbuf), "%d%%", percent);
+        drawString(pbuf, AUDIO_PANEL_X + 235.0f, AUDIO_PANEL_Y + 175.0f, 2.5f, 255, 255, 255);
+    }
+
+    drawThemedButton(VOL_DOWN_X, VOL_DOWN_Y, VOL_DOWN_W, VOL_DOWN_H, "[-] LOWER", 2.5f, 105, 105, 115, 240, 240, 245);
+    drawThemedButton(VOL_UP_X, VOL_UP_Y, VOL_UP_W, VOL_UP_H, "[+] HIGHER", 2.5f, 105, 105, 115, 240, 240, 245);
+
+    if (isMuted) {
+        drawThemedButton(MUTE_BTN_X, MUTE_BTN_Y, MUTE_BTN_W, MUTE_BTN_H, "UNMUTE SOUND", 2.5f, 75, 140, 75, 245, 255, 245);
+    } else {
+        drawThemedButton(MUTE_BTN_X, MUTE_BTN_Y, MUTE_BTN_W, MUTE_BTN_H, "MUTE ALL SOUND", 2.5f, 140, 70, 70, 255, 235, 235);
+    }
+
+    drawThemedButton(BACK_BTN_X, BACK_BTN_Y, BACK_BTN_W, BACK_BTN_H, "BACK TO MENU", 2.5f, 115, 115, 125, 255, 255, 255);
+}
+
+void handleAudioSettingsClick()
+{
+    if (insideRect(mouseX, mouseY, VOL_DOWN_X, VOL_DOWN_Y, VOL_DOWN_W, VOL_DOWN_H)) {
+        SoundManager::getInstance().volumeDown(0.1f);
+    }
+    else if (insideRect(mouseX, mouseY, VOL_UP_X, VOL_UP_Y, VOL_UP_W, VOL_UP_H)) {
+        SoundManager::getInstance().volumeUp(0.1f);
+    }
+    else if (insideRect(mouseX, mouseY, MUTE_BTN_X, MUTE_BTN_Y, MUTE_BTN_W, MUTE_BTN_H)) {
+        SoundManager::getInstance().toggleMute();
+    }
+    else if (insideRect(mouseX, mouseY, BACK_BTN_X, BACK_BTN_Y, BACK_BTN_W, BACK_BTN_H)) {
+        gameState = previousState;
+        SoundManager::getInstance().playSFX(SFX_SELECT);
     }
 }
 
@@ -1787,9 +1946,15 @@ void updateGame(float dt)
        removeInactivePlayerArrows();
        updateRangedAttacks(dt);
         if (enemyAtBase) {
+            if (gameState != STATE_LOST) {
+                SoundManager::getInstance().playSFX(SFX_LOSE);
+            }
             gameState = STATE_LOST;
         }
         else if (wavesDone) {
+            if (gameState != STATE_WON) {
+                SoundManager::getInstance().playSFX(SFX_WIN);
+            }
             gameState = STATE_WON;
         }
     }
@@ -1805,6 +1970,11 @@ void drawGame()
         drawBed(640, 190);
         drawButton(0, ICON_PLAY);
         drawButton(1, ICON_EXIT);
+        drawAudioLogoButton();
+    }
+    else if (gameState == STATE_AUDIO_SETTINGS) {
+        drawMenuBackground();
+        drawAudioSettingsMenu();
     }
     else if (gameState == STATE_CUTSCENE) {
         drawCutscene();
@@ -1848,11 +2018,18 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
     }
 
     if (key == GLFW_KEY_ESCAPE) {
+        if (gameState == STATE_AUDIO_SETTINGS) {
+            gameState = previousState;
+            SoundManager::getInstance().playSFX(SFX_SELECT);
+            return;
+        }
         if (gameState == STATE_PLAYING) {
             gameState = STATE_PAUSED;
+            SoundManager::getInstance().playSFX(SFX_SELECT);
         }
         else if (gameState == STATE_PAUSED) {
             gameState = STATE_PLAYING;
+            SoundManager::getInstance().playSFX(SFX_SELECT);
         }
         return;
     }
@@ -1871,6 +2048,7 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
     if (key >= GLFW_KEY_1 && key <= GLFW_KEY_4) {
         int lane = key - GLFW_KEY_1;
         laneSelected[lane] = !laneSelected[lane];
+        SoundManager::getInstance().playSFX(SFX_SELECT);
     }
     if (key == GLFW_KEY_W || key == GLFW_KEY_UP) {
         jumpPlayers();
@@ -1888,8 +2066,15 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
     }
 
     if (gameState == STATE_MENU) {
+        if (insideRect(mouseX, mouseY, AUDIO_BTN_X, AUDIO_BTN_Y, AUDIO_BTN_W, AUDIO_BTN_H)) {
+            previousState = STATE_MENU;
+            gameState = STATE_AUDIO_SETTINGS;
+            SoundManager::getInstance().playSFX(SFX_SELECT);
+            return;
+        }
         int b = buttonUnderMouse(2);
         if (b == 0) {
+            SoundManager::getInstance().playSFX(SFX_SELECT);
             startNewGame();
             startCutscene();
             gameState = STATE_CUTSCENE;
@@ -1898,26 +2083,34 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
             glfwSetWindowShouldClose(window, true);
         }
     }
+    else if (gameState == STATE_AUDIO_SETTINGS) {
+        handleAudioSettingsClick();
+    }
     else if (gameState == STATE_PAUSED) {
         int b = buttonUnderMouse(3);
         if (b == 0) {
+            SoundManager::getInstance().playSFX(SFX_SELECT);
             gameState = STATE_PLAYING;
         }
         if (b == 1) {
+            SoundManager::getInstance().playSFX(SFX_SELECT);
             startNewGame();
             gameState = STATE_PLAYING;
         }
         if (b == 2) {
+            SoundManager::getInstance().playSFX(SFX_SELECT);
             gameState = STATE_MENU;
         }
     }
     else if (gameState == STATE_WON || gameState == STATE_LOST) {
         int b = buttonUnderMouse(2);
         if (b == 0) {
+            SoundManager::getInstance().playSFX(SFX_SELECT);
             startNewGame();
             gameState = STATE_PLAYING;
         }
         if (b == 1) {
+            SoundManager::getInstance().playSFX(SFX_SELECT);
             gameState = STATE_MENU;
         }
     }
@@ -1928,6 +2121,7 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
         }
         else if (hoveredLane != -1) {
             laneSelected[hoveredLane] = !laneSelected[hoveredLane];
+            SoundManager::getInstance().playSFX(SFX_SELECT);
         }
     }
 }
@@ -1971,6 +2165,9 @@ int main()
     createShaderProgram();
     createShapes();
 
+    SoundManager::getInstance().init();
+    SoundManager::getInstance().playBGM();
+
     glfwSetKeyCallback(window, keyCallback);
     glfwSetMouseButtonCallback(window, mouseButtonCallback);
     glfwSetCursorPosCallback(window, cursorPosCallback);
@@ -2006,6 +2203,8 @@ int main()
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);
     glDeleteProgram(shaderProgram);
+
+    SoundManager::getInstance().cleanup();
 
     glfwTerminate();
     return 0;
